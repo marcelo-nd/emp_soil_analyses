@@ -17,14 +17,16 @@ library("phyloseq")
 # Get list of metadata files
 metadata_files <- list.files("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata")
 
-# Iterate over each file.
+# Join all metadata files into a single DF
+# iterate over all files
 for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
-  
+  # If it is the first file, use it create the result DF.
   if(file_number == 1){
     sample_metadata <- read_delim(paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata", metadata_files[file_number], sep = "/"),
                                                     delim = "\t", escape_double = FALSE,
                                                     trim_ws = TRUE)
   }
+  # rbind the rest of files
   else{
     sample_metadata <- rbind(sample_metadata, read_delim(paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata", metadata_files[file_number], sep = "/"),
                                                         delim = "\t", escape_double = FALSE,
@@ -34,6 +36,10 @@ for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
 
 head(sample_metadata)
 
+
+##### Let´s filter samples
+
+# Filter by empo_4 variable. Only Soil samples.
 soil_metadata <- sample_metadata %>% filter(empo_4 == "Soil (non-saline)")
 
 # Selecting only samples from biomes with anthropogenic influence.
@@ -43,16 +49,16 @@ soil_metadata <- soil_metadata %>% filter(env_biome %in% biomes)
 
 head(soil_metadata)
 
+# Get the names onf the samples that we choose
 soil_sample_names <- soil_metadata$sample_name
 
 
-# Now read otu tables
+##### Read OTU tables
 
+# get list of biom files
 biom_files <- list.files("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/biom_files")
 
 biom_files
-
-files_list <- c()
 
 for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   print(biom_files[i])
@@ -60,15 +66,18 @@ for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   biom_path <- paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/biom_files", x, sep = "/")
   print(biom_path)
   eval(call("<-", as.name(x), import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
-  files_list <- c(files_list, biom_files[i])
 }
 
-files_list
 
-biom_merged <- do.call(merge_phyloseq, mget(files_list))
+# Merge all biom files into a single one.
+biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
+biom_merged
+
+# Extract otu table and tax table from merged biom file and cbind them
 otu_table <- cbind(data.frame(otu_table(biom_merged)), data.frame(tax_table(biom_merged)))
 
+# Lets change the name of the samples in original metadata file beacause they don't comply with R standards.
 soil_sample_names2 <- c()
 
 for (i in seq(from = 1, to = length(soil_sample_names), by = 1)){
@@ -77,6 +86,7 @@ for (i in seq(from = 1, to = length(soil_sample_names), by = 1)){
 
 soil_sample_names2
 
+# Lets filter the otu_table with taxonomy and choose only the selected samples.
 otu_table <- otu_table %>% select(any_of(c(soil_sample_names2, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"))))
 
 head(otu_table)
