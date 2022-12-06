@@ -74,8 +74,12 @@ biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
 biom_merged
 
+ps.gen <- phyloseq::tax_glom(biom_merged, "Genus", NArm = TRUE)
+
 # Extract otu table and tax table from merged biom file and cbind them
 otu_table <- cbind(data.frame(otu_table(biom_merged)), data.frame(tax_table(biom_merged)))
+
+otu_table <- cbind(data.frame(otu_table(ps.gen)), data.frame(tax_table(ps.gen)))
 
 # Lets change the name of the samples in original metadata file beacause they don't comply with R standards.
 soil_sample_names2 <- c()
