@@ -1,5 +1,4 @@
 # Load and install packages
-
 library(dplyr)
 library(readr)
 library(tidyr)
@@ -16,6 +15,8 @@ library("phyloseq")
 
 # Get list of metadata files
 metadata_files <- list.files("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata")
+
+metadata_files
 
 # Join all metadata files into a single DF
 # iterate over all files
@@ -36,6 +37,7 @@ for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
 
 head(sample_metadata)
 
+length(unique(sample_metadata))
 
 ##### Let´s filter samples
 
@@ -45,7 +47,6 @@ soil_metadata <- sample_metadata %>% filter(empo_4 == "Soil (non-saline)")
 # Selecting only samples from biomes with anthropogenic influence.
 biomes <- c("rangeland biome", "anthropogenic terrestrial biome", "urban biome", "cropland biome")
 soil_metadata <- soil_metadata %>% filter(env_biome %in% biomes)
-
 
 head(soil_metadata)
 
@@ -65,9 +66,8 @@ for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   x <- biom_files[i]
   biom_path <- paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/biom_files", x, sep = "/")
   print(biom_path)
-  eval(call("<-", as.name(x), import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
+  eval(call("<-", as.name(x), phyloseq::import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
 }
-
 
 # Merge all biom files into a single one.
 biom_merged <- do.call(merge_phyloseq, mget(biom_files))
@@ -79,11 +79,9 @@ otu_table <- cbind(data.frame(otu_table(biom_merged)), data.frame(tax_table(biom
 
 # Lets change the name of the samples in original metadata file beacause they don't comply with R standards.
 soil_sample_names2 <- c()
-
 for (i in seq(from = 1, to = length(soil_sample_names), by = 1)){
   soil_sample_names2 <- c(soil_sample_names2, paste("X", soil_sample_names[i], sep = ""))
 }
-
 soil_sample_names2
 
 # Lets filter the otu_table with taxonomy and choose only the selected samples.
@@ -92,7 +90,7 @@ otu_table <- otu_table %>% select(any_of(c(soil_sample_names2, c("Kingdom", "Phy
 head(otu_table)
 
 otu_table <- otu_table %>% 
-  unite(bacteria, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"))
+  unite(bacteria, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"), sep = "_")
 
 head(otu_table)
 
@@ -104,7 +102,10 @@ head(otu_table2)
 # renaming tax to taxonomy. rename() is a dplyr function.
 otu_table2 <- dplyr::rename(otu_table2, taxonomy = "otu_table[, ncol(otu_table)]")
 
-otu_table2["taxonomy"] <- dereplicate_taxonomy(otu_table2$taxonomy)
+#
+#otu_table2["taxonomy"] <- dereplicate_taxonomy(otu_table2$taxonomy)
+
+otu_table2 <- otu_table2 %>% group_by(taxonomy) %>% summarise_all(funs(sum))
 
 # setting row names and dropping rownames column
 otu_table2 <- tibble::remove_rownames(otu_table2)
@@ -115,7 +116,9 @@ head(otu_table2)
 otu_table_ordered_means <- otu_table2[order(rowMeans(otu_table2), decreasing = TRUE),]
 
 # Select only the 30 more abundant species.
-otu_table3 <- otu_table_ordered_means[1:30,]
+#otu_table3 <- otu_table_ordered_means[1:50,]
+
+otu_table3 <- otu_table_ordered_means[1:100,]
 
 # Generate a column with the names of ASVs/OTUs using rownames.
 otu_table3["bacteria"] <- row.names(otu_table3)
@@ -123,10 +126,10 @@ otu_table3["bacteria"] <- row.names(otu_table3)
 colnames(otu_table3,)
 
 # For all soil samples
-otu_g <- gather(otu_table3, X13114.king.27.s001:X13114.stegen.38.s018 , key = "sample", value = "counts")
+otu_g <- gather(otu_table3, X13114.king.27.s001:X13114.stegen.38.s018 , key = "sample", value = "abundance")
 
 # For soil samples with anthopogenic influence
-otu_g <- gather(otu_table3, X13114.control.soil.grass.near.BRF:X13114.shade.23.s010 , key = "sample", value = "counts")
+otu_g <- gather(otu_table3, X13114.control.soil.grass.near.BRF:X13114.shade.23.s010 , key = "sample", value = "abundance")
 
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
                 "#0072B2","brown1", "#CC79A7", "olivedrab3", "rosybrown",
@@ -139,18 +142,19 @@ cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
                 "firebrick2", "#C8D2D1", "#14471E", "#EE9B01", "#DA6A00",
                 "#4B1E19", "#C0587E", "#FC8B5E", "#EA592A", "#FEF4C0")
 
-ggplot(otu_g, aes(x=sample, y=counts, fill=bacteria)) + 
+ggplot(otu_g, aes(x=sample, y=abundance, fill=bacteria)) + 
   geom_bar(position="fill", stat="identity") +
-  scale_fill_manual(values=cbbPalette)
-
-+
+  #scale_fill_manual(values=cbbPalette) +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank())
 
 
+
+############ Heatmaps
+
 #scaled by column
-otu_table_scaled <- scale(otu_table_ordered_means[1:30,])
+otu_table_scaled <- scale(otu_table_ordered_means[1:50,])
 
 # Graph heatmap
 heatmap(otu_table_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
