@@ -7,14 +7,16 @@ library(ggplot2)
 if (!require("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
-BiocManager::install(c("phyloseq", "microbiome", "ComplexHeatmap"), update = FALSE)
+BiocManager::install(c("phyloseq", "ComplexHeatmap"), update = FALSE)
 
 library("phyloseq")
+
+setwd("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis")
 
 ##### Load metadata files
 
 # Get list of metadata files
-metadata_files <- list.files("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata")
+metadata_files <- list.files("./metadata")
 
 metadata_files
 
@@ -23,48 +25,62 @@ metadata_files
 for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
   # If it is the first file, use it create the result DF.
   if(file_number == 1){
-    sample_metadata <- read_delim(paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata", metadata_files[file_number], sep = "/"),
-                                                    delim = "\t", escape_double = FALSE,
-                                                    trim_ws = TRUE)
+    sample_metadata <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
+                                      sep = "/"))
+    print(ncol(sample_metadata))
+    print(nrow(sample_metadata))
   }
   # rbind the rest of files
   else{
-    sample_metadata <- rbind(sample_metadata, read_delim(paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/metadata", metadata_files[file_number], sep = "/"),
-                                                        delim = "\t", escape_double = FALSE,
-                                                        trim_ws = TRUE))
+    current_table <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
+                                    sep = "/"))
+    sample_metadata <- rbind(sample_metadata, current_table)
   }
 }
 
 head(sample_metadata)
 
+# Number of unique variables (columns)
 length(unique(sample_metadata))
+
+# Number of unique samples (rows)
+length(unique(sample_metadata$sample_name))
+
+write.csv(sample_metadata, "sample_metadata.csv", row.names = FALSE, quote = FALSE)
 
 ##### Let´s filter samples
 
-# Filter by empo_4 variable. Only Soil samples.
-soil_metadata <- sample_metadata %>% filter(empo_4 == "Soil (non-saline)")
+# Filter only Soil samples (empo_4 == "Soil (non-saline)") and biomes with anthropogenic influence (env_biome).
+anthropogenic_biomes <- c("rangeland biome", "anthropogenic terrestrial biome", "urban biome", "cropland biome")
 
-# Selecting only samples from biomes with anthropogenic influence.
-biomes <- c("rangeland biome", "anthropogenic terrestrial biome", "urban biome", "cropland biome")
-soil_metadata <- soil_metadata %>% filter(env_biome %in% biomes)
+soil_metadata <- sample_metadata %>%
+  filter(empo_4 == "Soil (non-saline)") %>%
+  filter(env_biome %in% anthropogenic_biomes)
 
 head(soil_metadata)
 
-# Get the names onf the samples that we choose
-soil_sample_names <- soil_metadata$sample_name
+# Number of unique variables (columns)
+length(unique(soil_metadata))
 
+# Number of unique samples (rows)
+length(unique(soil_metadata$sample_name))
+
+write.csv(sample_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = FALSE)
+
+# Get the names only of the samples that we choose
+soil_sample_names <- soil_metadata$sample_name
 
 ##### Read OTU tables
 
 # get list of biom files
-biom_files <- list.files("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/biom_files")
+biom_files <- list.files("./biom_files")
 
 biom_files
 
 for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   print(biom_files[i])
   x <- biom_files[i]
-  biom_path <- paste("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis/biom_files", x, sep = "/")
+  biom_path <- paste("./biom_files", x, sep = "/")
   print(biom_path)
   eval(call("<-", as.name(x), phyloseq::import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
 }
@@ -74,66 +90,52 @@ biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
 biom_merged
 
-ps.gen <- phyloseq::tax_glom(biom_merged, "Genus", NArm = TRUE)
+# Collapse samples at Genus level
+biom_genus <- phyloseq::tax_glom(biom_merged, "Genus", NArm = TRUE)
 
 # Extract otu table and tax table from merged biom file and cbind them
-otu_table <- cbind(data.frame(otu_table(biom_merged)), data.frame(tax_table(biom_merged)))
+asv_table <- cbind(data.frame(otu_table(biom_genus)), data.frame(tax_table(biom_genus)))
 
-otu_table <- cbind(data.frame(otu_table(ps.gen)), data.frame(tax_table(ps.gen)))
-
-# Lets change the name of the samples in original metadata file beacause they don't comply with R standards.
-soil_sample_names2 <- c()
-for (i in seq(from = 1, to = length(soil_sample_names), by = 1)){
-  soil_sample_names2 <- c(soil_sample_names2, paste("X", soil_sample_names[i], sep = ""))
-}
-soil_sample_names2
+# Lets change the name of the samples in original metadata file because they don't comply with R standards.
+soil_sample_names <- paste0("X", soil_sample_names)
 
 # Lets filter the otu_table with taxonomy and choose only the selected samples.
-otu_table <- otu_table %>% select(any_of(c(soil_sample_names2, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"))))
+soil_table <- asv_table %>% select(any_of(c(soil_sample_names, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"))))
 
-head(otu_table)
-
-otu_table <- otu_table %>% 
+soil_table <- soil_table %>% 
   unite(bacteria, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"), sep = "_")
 
-head(otu_table)
-
 # moving tax column to the first column
-otu_table2 <- cbind(otu_table[, ncol(otu_table)], otu_table[1:nrow(otu_table), 1:(ncol(otu_table) - 1)])
-
-head(otu_table2)
+soil_table <- cbind(soil_table[, ncol(soil_table)], soil_table[1:nrow(soil_table), 1:(ncol(soil_table) - 1)])
 
 # renaming tax to taxonomy. rename() is a dplyr function.
-otu_table2 <- dplyr::rename(otu_table2, taxonomy = "otu_table[, ncol(otu_table)]")
+soil_table <- dplyr::rename(soil_table, taxonomy = "soil_table[, ncol(soil_table)]")
 
-#
-#otu_table2["taxonomy"] <- dereplicate_taxonomy(otu_table2$taxonomy)
-
-otu_table2 <- otu_table2 %>% group_by(taxonomy) %>% summarise_all(funs(sum))
+# Collapse all ASV entries with the same taxonomic id
+soil_table <- soil_table %>% group_by(taxonomy) %>% summarise_all(list(sum))
 
 # setting row names and dropping rownames column
-otu_table2 <- tibble::remove_rownames(otu_table2)
-otu_table2 <- tibble::column_to_rownames(otu_table2, var = "taxonomy")
+soil_table <- tibble::remove_rownames(soil_table)
+soil_table <- tibble::column_to_rownames(soil_table, var = "taxonomy")
 
-head(otu_table2)
+head(soil_table)
 
-otu_table_ordered_means <- otu_table2[order(rowMeans(otu_table2), decreasing = TRUE),]
+soil_table_ordered_by_means <- soil_table[order(rowMeans(soil_table), decreasing = TRUE),]
 
-# Select only the 30 more abundant species.
-#otu_table3 <- otu_table_ordered_means[1:50,]
+# Select only the n more abundant species.
+soil_table_ordered_50 <- soil_table_ordered_by_means[1:50,]
 
-otu_table3 <- otu_table_ordered_means[1:100,]
+# Remove columns (samples) with yero count
+soil_table_ordered_50 <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
 
 # Generate a column with the names of ASVs/OTUs using rownames.
-otu_table3["bacteria"] <- row.names(otu_table3)
+soil_table_bp <- soil_table_ordered_50
+soil_table_bp["bacteria"] <- row.names(soil_table_bp)
 
-colnames(otu_table3,)
+colnames(soil_table_bp)
 
-# For all soil samples
-otu_g <- gather(otu_table3, X13114.king.27.s001:X13114.stegen.38.s018 , key = "sample", value = "abundance")
-
-# For soil samples with anthopogenic influence
-otu_g <- gather(otu_table3, X13114.control.soil.grass.near.BRF:X13114.shade.23.s010 , key = "sample", value = "abundance")
+# Gather
+soil_table_bp <- gather(soil_table_bp, X13114.control.soil.grass.near.BRF:X13114.shade.23.s010 , key = "sample", value = "abundance")
 
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
                 "#0072B2","brown1", "#CC79A7", "olivedrab3", "rosybrown",
@@ -146,27 +148,45 @@ cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
                 "firebrick2", "#C8D2D1", "#14471E", "#EE9B01", "#DA6A00",
                 "#4B1E19", "#C0587E", "#FC8B5E", "#EA592A", "#FEF4C0")
 
-ggplot(otu_g, aes(x=sample, y=abundance, fill=bacteria)) + 
-  geom_bar(position="fill", stat="identity") +
-  #scale_fill_manual(values=cbbPalette) +
+ggplot(soil_table_bp, aes(x=sample, y=abundance, fill=bacteria)) + 
+  geom_bar(position="fill", stat="identity", show.legend = TRUE) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_manual(values=cbbPalette) +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank())
 
+############ Heatmaps #
 
+library(ComplexHeatmap)
 
-############ Heatmaps
+#scaled by column (samples)
+table_hm_c_scaled <- scale(soil_table_ordered_50)
+#scaled by row (species)
+table_hm_r_scaled <- scale(t(soil_table_ordered_50))
 
-#scaled by column
-otu_table_scaled <- scale(otu_table_ordered_means[1:50,])
+# Graph heatmap samples-scaled
+heatmap(table_hm_c_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
+# Graph heatmap species-scaled
+heatmap(table_hm_r_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
 
-# Graph heatmap
-heatmap(otu_table_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
+heatmap(data.matrix(soil_table_ordered_50), distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale = "column")
 
-species_scaled_df <- scale(t(otu_table_ordered_means[1:30,]))
-heatmap(t(species_scaled_df), distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
+### Heatmap with annotations
 
-heatmap(data.matrix(otu_table2), distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale = "column")
+biomes_metadata <- select(soil_metadata, sample_name, env_biome)
 
+biomes_metadata$sample_name = paste0("X", biomes_metadata$sample_name)
 
-unique(soil_metadata$env_biome)
+biomes_metadata <- biomes_metadata %>%
+  filter(sample_name %in% colnames(soil_table_ordered_50))
+
+biomes <- biomes_metadata$env_biome
+
+column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes)
+
+# 
+ComplexHeatmap::Heatmap(table_hm_c_scaled, name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
+
+# 
+ComplexHeatmap::Heatmap(t(table_hm_r_scaled), name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
