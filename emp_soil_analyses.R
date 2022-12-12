@@ -27,14 +27,14 @@ for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
   if(file_number == 1){
     sample_metadata <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
                                       sep = "/"))
-    print(ncol(sample_metadata))
-    print(nrow(sample_metadata))
   }
   # rbind the rest of files
   else{
     current_table <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
-                                    sep = "/"))
-    sample_metadata <- rbind(sample_metadata, current_table)
+                                           sep = "/"))
+    if (identical(colnames(sample_metadata), colnames(current_table))) {
+      sample_metadata <- rbind(sample_metadata, current_table)
+    }
   }
 }
 
@@ -65,7 +65,7 @@ length(unique(soil_metadata))
 # Number of unique samples (rows)
 length(unique(soil_metadata$sample_name))
 
-write.csv(sample_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = FALSE)
+write.csv(soil_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = FALSE)
 
 # Get the names only of the samples that we choose
 soil_sample_names <- soil_metadata$sample_name
@@ -73,14 +73,15 @@ soil_sample_names <- soil_metadata$sample_name
 ##### Read OTU tables
 
 # get list of biom files
-biom_files <- list.files("./biom_files")
+biom_files <- list.files("./biom_files/150")
 
 biom_files
 
+# Import all biom files in directory.
 for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   print(biom_files[i])
   x <- biom_files[i]
-  biom_path <- paste("./biom_files", x, sep = "/")
+  biom_path <- paste("./biom_files/150", x, sep = "/")
   print(biom_path)
   eval(call("<-", as.name(x), phyloseq::import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
 }
@@ -90,7 +91,7 @@ biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
 biom_merged
 
-# Collapse samples at Genus level
+# Collapse samples at Genus level. NArm = TRUE will remove anything that is unclassified at genus level.
 biom_genus <- phyloseq::tax_glom(biom_merged, "Genus", NArm = TRUE)
 
 # Extract otu table and tax table from merged biom file and cbind them
@@ -170,23 +171,25 @@ heatmap(table_hm_c_scaled, distfun = function(x) dist(x, method="euclidian"), hc
 # Graph heatmap species-scaled
 heatmap(table_hm_r_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
 
-heatmap(data.matrix(soil_table_ordered_50), distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale = "column")
-
 ### Heatmap with annotations
-
+# Select biome data from metadata for each sample
 biomes_metadata <- select(soil_metadata, sample_name, env_biome)
 
+# Correct samples names
 biomes_metadata$sample_name = paste0("X", biomes_metadata$sample_name)
 
+# Get samples from metadata 
 biomes_metadata <- biomes_metadata %>%
   filter(sample_name %in% colnames(soil_table_ordered_50))
 
+# Create biomes info vector for each sample
 biomes <- biomes_metadata$env_biome
 
+# Create annotation for heatmap
 column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes)
 
-# 
+# Heatmap, column-scaled
 ComplexHeatmap::Heatmap(table_hm_c_scaled, name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
 
-# 
+# Heatmap, row-scaled
 ComplexHeatmap::Heatmap(t(table_hm_r_scaled), name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
