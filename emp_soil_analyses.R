@@ -70,6 +70,8 @@ write.csv(soil_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = 
 # Get the names only of the samples that we choose
 soil_sample_names <- soil_metadata$sample_name
 
+soil_sample_names <- make.names(soil_sample_names)
+
 ##### Read OTU tables
 
 # get list of biom files
@@ -91,71 +93,21 @@ biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
 biom_merged
 
-# Collapse samples at Genus level. NArm = TRUE will remove anything that is unclassified at genus level.
-biom_genus <- phyloseq::tax_glom(biom_merged, "Genus", NArm = TRUE)
+##### Genus Level
+# Extract ASV table
 
-# Extract otu table and tax table from merged biom file and cbind them
-asv_table <- cbind(data.frame(otu_table(biom_genus)), data.frame(tax_table(biom_genus)))
+asv_table <- extract_table(biom_object = biom_merged, tax_rank = "Genus", col_names = get_colNames_per_rank("Genus"))
 
-# Lets change the name of the samples in original metadata file because they don't comply with R standards.
-soil_sample_names <- paste0("X", soil_sample_names)
+asv_table <- clean_table(feature_table = asv_table, order_table = TRUE)
 
-# Lets filter the otu_table with taxonomy and choose only the selected samples.
-soil_table <- asv_table %>% select(any_of(c(soil_sample_names, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"))))
-
-soil_table <- soil_table %>% 
-  unite(bacteria, c("Kingdom", "Phylum",  "Class",  "Order",  "Family", "Genus", "Species"), sep = "_")
-
-# moving tax column to the first column
-soil_table <- cbind(soil_table[, ncol(soil_table)], soil_table[1:nrow(soil_table), 1:(ncol(soil_table) - 1)])
-
-# renaming tax to taxonomy. rename() is a dplyr function.
-soil_table <- dplyr::rename(soil_table, taxonomy = "soil_table[, ncol(soil_table)]")
-
-# Collapse all ASV entries with the same taxonomic id
-soil_table <- soil_table %>% group_by(taxonomy) %>% summarise_all(list(sum))
-
-# setting row names and dropping rownames column
-soil_table <- tibble::remove_rownames(soil_table)
-soil_table <- tibble::column_to_rownames(soil_table, var = "taxonomy")
+soil_table <- asv_table %>% select(any_of(soil_sample_names))
 
 head(soil_table)
 
-soil_table_ordered_by_means <- soil_table[order(rowMeans(soil_table), decreasing = TRUE),]
+# Select only the n more abundant ASVs.
+soil_table_ordered_50 <- soil_table[1:50,]
 
-# Select only the n more abundant species.
-soil_table_ordered_50 <- soil_table_ordered_by_means[1:50,]
-
-# Remove columns (samples) with yero count
-soil_table_ordered_50 <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
-
-# Generate a column with the names of ASVs/OTUs using rownames.
-soil_table_bp <- soil_table_ordered_50
-soil_table_bp["bacteria"] <- row.names(soil_table_bp)
-
-colnames(soil_table_bp)
-
-# Gather
-soil_table_bp <- gather(soil_table_bp, X13114.control.soil.grass.near.BRF:X13114.shade.23.s010 , key = "sample", value = "abundance")
-
-cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-                "#0072B2","brown1", "#CC79A7", "olivedrab3", "rosybrown",
-                "darkorange3", "blueviolet", "darkolivegreen4", "lightskyblue4", "navajowhite4",
-                "purple4", "springgreen4", "firebrick3", "gold3", "cyan3",
-                "plum", "mediumspringgreen", "blue", "yellow", "#053f73",
-                "#e3ae78", "#a23f3f", "#290f76", "#ce7e00", "#386857",
-                "#738564", "#e89d56", "#cd541d", "#1a3a46", "#ffe599",
-                "#583E26", "#A78B71", "#F7C815", "#EC9704", "#9C4A1A",
-                "firebrick2", "#C8D2D1", "#14471E", "#EE9B01", "#DA6A00",
-                "#4B1E19", "#C0587E", "#FC8B5E", "#EA592A", "#FEF4C0")
-
-ggplot(soil_table_bp, aes(x=sample, y=abundance, fill=bacteria)) + 
-  geom_bar(position="fill", stat="identity", show.legend = TRUE) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-  scale_fill_manual(values=cbbPalette) +
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())
+barplot_from_feature_table(soil_table_ordered_50)
 
 ############ Heatmaps #
 
@@ -189,7 +141,28 @@ biomes <- biomes_metadata$env_biome
 column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes)
 
 # Heatmap, column-scaled
-ComplexHeatmap::Heatmap(table_hm_c_scaled, name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
+ComplexHeatmap::Heatmap(table_hm_c_scaled,
+                        name = "Soil genus-level ASVs abundance",
+                        top_annotation = column_ha,
+                        show_column_names = FALSE)
 
 # Heatmap, row-scaled
 ComplexHeatmap::Heatmap(t(table_hm_r_scaled), name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
+
+
+
+##### Family Level
+# Extract ASV table
+
+asv_table_fam <- extract_table(biom_object = biom_merged, tax_rank = "Family", col_names = get_colNames_per_rank("Family"))
+
+asv_table_fam <- clean_table(feature_table = asv_table_fam, order_table = TRUE)
+
+soil_table_fam <- asv_table_fam %>% select(any_of(soil_sample_names))
+
+head(soil_table_fam)
+
+# Select only the n more abundant ASVs.
+soil_table_50_fam <- soil_table_fam[1:50,]
+
+barplot_from_feature_table(soil_table_50_fam)
