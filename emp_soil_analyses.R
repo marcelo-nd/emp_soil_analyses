@@ -13,6 +13,9 @@ library("phyloseq")
 
 setwd("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis")
 
+##################################################################################
+# Processing data files from the EMP
+
 ##### Load metadata files
 
 # Get list of metadata files
@@ -72,6 +75,8 @@ soil_sample_names <- soil_metadata$sample_name
 
 soil_sample_names <- make.names(soil_sample_names)
 
+soil_sample_names
+
 ##### Read OTU tables
 
 # get list of biom files
@@ -93,13 +98,17 @@ biom_merged <- do.call(merge_phyloseq, mget(biom_files))
 
 biom_merged
 
+
+##################################################################################
 ##### Genus Level
-# Extract ASV table
+
+# Extract and clean ASV table.
 
 asv_table <- extract_table(biom_object = biom_merged, tax_rank = "Genus", col_names = get_colNames_per_rank("Genus"))
 
 asv_table <- clean_table(feature_table = asv_table, order_table = TRUE)
 
+# Select data only from soil samples.
 soil_table <- asv_table %>% select(any_of(soil_sample_names))
 
 head(soil_table)
@@ -107,38 +116,37 @@ head(soil_table)
 # Select only the n more abundant ASVs.
 soil_table_ordered_50 <- soil_table[1:50,]
 
+# Do barplot.
 barplot_from_feature_table(soil_table_ordered_50)
 
-############ Heatmaps #
+############ Heatmaps
 
 library(ComplexHeatmap)
 
-#scaled by column (samples)
-table_hm_c_scaled <- scale(soil_table_ordered_50)
-#scaled by row (species)
-table_hm_r_scaled <- scale(t(soil_table_ordered_50))
+# Remove columns (samples) with zero count
+soil_table_ordered_50_no_0s <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
 
-# Graph heatmap samples-scaled
-heatmap(table_hm_c_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
-# Graph heatmap species-scaled
-heatmap(table_hm_r_scaled, distfun = function(x) dist(x, method="euclidian"), hclustfun = function(x) hclust(x, method="ward.D"), scale ="none")
+# Scaled by column (samples)
+table_hm_c_scaled <- scale(soil_table_ordered_50_no_0s)
+# Scaled by row (species)
+table_hm_r_scaled <- t(scale(t(soil_table_ordered_50_no_0s)))
 
 ### Heatmap with annotations
-# Select biome data from metadata for each sample
+# Select sample_name and env_biome columns from metadata for each sample.
 biomes_metadata <- select(soil_metadata, sample_name, env_biome)
 
 # Correct samples names
 biomes_metadata$sample_name = paste0("X", biomes_metadata$sample_name)
 
-# Get samples from metadata 
+# Get samples from metadata that are also in samples used to barplot (samples with "counts = 0" were removed)
 biomes_metadata <- biomes_metadata %>%
-  filter(sample_name %in% colnames(soil_table_ordered_50))
+  filter(sample_name %in% colnames(soil_table_ordered_50_no_0s))
 
-# Create biomes info vector for each sample
-biomes <- biomes_metadata$env_biome
+# Check that names in scaled matrix and metadata are identica so that metadata info matches the samples in abundance matrix.
+identical(colnames(table_hm_c_scaled), biomes_metadata$sample_name)
 
-# Create annotation for heatmap
-column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes)
+# Create annotation for heatmap using env_biome orign.
+column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes_metadata$env_biome)
 
 # Heatmap, column-scaled
 ComplexHeatmap::Heatmap(table_hm_c_scaled,
@@ -147,8 +155,12 @@ ComplexHeatmap::Heatmap(table_hm_c_scaled,
                         show_column_names = FALSE)
 
 # Heatmap, row-scaled
-ComplexHeatmap::Heatmap(t(table_hm_r_scaled), name = "Soil genus-level ASVs abundance", top_annotation = column_ha)
-
+# Remove rows (ASVs) with sum counts of 0
+table_hm_r_scaled <- table_hm_r_scaled[apply(table_hm_r_scaled[,-1], 1, function(x) !all(is.nan(x))),]
+ComplexHeatmap::Heatmap(table_hm_r_scaled,
+                        name = "Soil genus-level ASVs abundance",
+                        top_annotation = column_ha,
+                        show_column_names = FALSE)
 
 
 ##### Family Level
