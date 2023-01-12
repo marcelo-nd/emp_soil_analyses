@@ -11,7 +11,7 @@ BiocManager::install(c("phyloseq", "ComplexHeatmap"), update = FALSE)
 
 library("phyloseq")
 
-setwd("C:/Users/Marcelo/Desktop/EMP_soil_strain_analysis")
+setwd("C:/Users/Marcelo/OneDrive - UT Cloud/Postdoc Tü/Sci/EMP_soil_strain_analysis")
 
 ##################################################################################
 # Processing data files from the EMP
@@ -29,12 +29,12 @@ for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
   # If it is the first file, use it create the result DF.
   if(file_number == 1){
     sample_metadata <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
-                                      sep = "/"))
+                                      sep = "/"), name_repair = "unique", col_types = cols())
   }
   # rbind the rest of files
   else{
     current_table <- readr::read_tsv(paste("./metadata", metadata_files[file_number],
-                                           sep = "/"))
+                                           sep = "/"), name_repair = "unique", col_types = cols())
     if (identical(colnames(sample_metadata), colnames(current_table))) {
       sample_metadata <- rbind(sample_metadata, current_table)
     }
