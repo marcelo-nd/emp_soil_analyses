@@ -1,5 +1,5 @@
 # Load and install packages
-library(dplyr)
+library(dplyr, quietly = TRUE)
 library(readr)
 library(tidyr)
 library(ggplot2)
@@ -7,11 +7,18 @@ library(ggplot2)
 if (!require("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
-BiocManager::install(c("phyloseq", "ComplexHeatmap"), update = FALSE)
+if (!require("phyloseq", quietly = TRUE))
+  BiocManager::install("phyloseq", update = FALSE)
 
-library("phyloseq")
+if (!require("ComplexHeatmap", quietly = TRUE))
+  BiocManager::install("ComplexHeatmap", update = FALSE)
+
+library("phyloseq", quietly = TRUE)
 
 setwd("C:/Users/Marcelo/OneDrive - UT Cloud/Postdoc Tü/Sci/EMP_soil_strain_analysis")
+
+source("C:/Users/Marcelo/Documents/Github/microbiome-help/table_importers.R")
+source("C:/Users/Marcelo/Documents/Github/microbiome-help/graphs.R")
 
 ##################################################################################
 # Processing data files from the EMP
@@ -40,6 +47,8 @@ for(file_number in seq(from = 1, to = length(metadata_files), by = 1)){
     }
   }
 }
+
+sample_metadata$sample_name <- make.names(sample_metadata$sample_name)
 
 head(sample_metadata)
 
@@ -73,7 +82,7 @@ write.csv(soil_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = 
 # Get the names only of the samples that we choose
 soil_sample_names <- soil_metadata$sample_name
 
-soil_sample_names <- make.names(soil_sample_names)
+#soil_sample_names <- make.names(soil_sample_names)
 
 soil_sample_names
 
@@ -87,10 +96,10 @@ biom_files
 # Import all biom files in directory.
 for (i in seq(from = 1, to = length(biom_files), by = 1)) {
   print(biom_files[i])
-  x <- biom_files[i]
-  biom_path <- paste("./biom_files/150", x, sep = "/")
+  biom_file_name <- biom_files[i]
+  biom_path <- paste("./biom_files/150", biom_file_name, sep = "/")
   print(biom_path)
-  eval(call("<-", as.name(x), phyloseq::import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
+  eval(call("<-", as.name(biom_file_name), phyloseq::import_biom(biom_path, parseFunction=parse_taxonomy_greengenes)))
 }
 
 # Merge all biom files into a single one.
@@ -116,53 +125,102 @@ head(soil_table)
 # Select only the n more abundant ASVs.
 soil_table_ordered_50 <- soil_table[1:50,]
 
+# Remove columns (samples) with zero count
+soil_table_ordered_50 <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
+
+# Export the table
+write.table(soil_table_ordered_50, "soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
+
 # Do barplot.
 barplot_from_feature_table(soil_table_ordered_50)
 
-############ Heatmaps
+##################################################################################
+#Heatmaps
 
 library(ComplexHeatmap)
 
-# Remove columns (samples) with zero count
-soil_table_ordered_50_no_0s <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
-
 # Scaled by column (samples)
-table_hm_c_scaled <- scale(soil_table_ordered_50_no_0s)
+table_hm_c_scaled <- scale(soil_table_ordered_50)
 # Scaled by row (species)
-table_hm_r_scaled <- t(scale(t(soil_table_ordered_50_no_0s)))
+table_hm_r_scaled <- t(scale(t(soil_table_ordered_50)))
 
 ### Heatmap with annotations
 # Select sample_name and env_biome columns from metadata for each sample.
 biomes_metadata <- select(soil_metadata, sample_name, env_biome)
 
 # Correct samples names
-biomes_metadata$sample_name = paste0("X", biomes_metadata$sample_name)
+#biomes_metadata$sample_name = paste0("X", biomes_metadata$sample_name)
 
 # Get samples from metadata that are also in samples used to barplot (samples with "counts = 0" were removed)
 biomes_metadata <- biomes_metadata %>%
-  filter(sample_name %in% colnames(soil_table_ordered_50_no_0s))
+  filter(sample_name %in% colnames(soil_table_ordered_50))
 
-# Check that names in scaled matrix and metadata are identica so that metadata info matches the samples in abundance matrix.
+head(biomes_metadata)
+
+# Check that names in scaled matrix and metadata are identical so that metadata info matches the samples in abundance matrix.
 identical(colnames(table_hm_c_scaled), biomes_metadata$sample_name)
 
 # Create annotation for heatmap using env_biome orign.
 column_ha = ComplexHeatmap::HeatmapAnnotation(biome = biomes_metadata$env_biome)
 
+# Create function name
+col_fun = circlize::colorRamp2(c(min(table_hm_c_scaled), 0.5, max(table_hm_c_scaled)), c("#5F8D4E", "white", "#FF6464"))
+
 # Heatmap, column-scaled
 ComplexHeatmap::Heatmap(table_hm_c_scaled,
                         name = "Soil genus-level ASVs abundance",
                         top_annotation = column_ha,
-                        show_column_names = FALSE)
+                        show_column_names = FALSE,
+                        col = col_fun)
 
-# Heatmap, row-scaled
-# Remove rows (ASVs) with sum counts of 0
+# Heatmap, row-scaled Remove rows (ASVs) with sum counts of 0
 table_hm_r_scaled <- table_hm_r_scaled[apply(table_hm_r_scaled[,-1], 1, function(x) !all(is.nan(x))),]
 ComplexHeatmap::Heatmap(table_hm_r_scaled,
                         name = "Soil genus-level ASVs abundance",
                         top_annotation = column_ha,
                         show_column_names = FALSE)
 
+##################################################################################
+# Co-ocurrence network
+library(cooccur)
 
+# Transforming abundance data to presence/abscence
+otu_table_pa <- vegan::decostand(soil_table_ordered_50, method = "pa")
+
+# Infering co-ocurrences
+cooccur.otus <- cooccur::cooccur(otu_table_pa,
+                        type = "spp_site",
+                        spp_names = TRUE)
+
+summary(cooccur.otus)
+plot(cooccur.otus)
+
+
+# Getting only the significant interactions
+co <- print(cooccur.otus)
+
+# Create a data frame of the nodes in the network. 
+nodes <- data.frame(id = 1:nrow(otu_table_pa),
+                    label = rownames(otu_table_pa),
+                    color = "#606482",
+                    shadow = TRUE) 
+
+# Create an edges dataframe from the significant pairwise co-occurrences.
+edges <- data.frame(from = co$sp1, to = co$sp2,
+                    color = ifelse(co$p_lt <= 0.05,
+                                   "red", "green"),
+                                   dashes = ifelse(co$p_lt <= 0.05, TRUE, FALSE))
+
+# Plotting network
+library(visNetwork)
+visNetwork(nodes = nodes, edges = edges) %>%
+  visIgraphLayout(layout = "layout_with_kk")
+
+g <- graph_from_data_frame(edges, directed=FALSE, vertices=nodes)
+print(g, e=TRUE, v=TRUE)
+plot(g)
+write.graph(g, "C:/Users/marce/Desktop/coocur_network.graphml", format = "graphml")
+##################################################################################
 ##### Family Level
 # Extract ASV table
 
@@ -178,3 +236,6 @@ head(soil_table_fam)
 soil_table_50_fam <- soil_table_fam[1:50,]
 
 barplot_from_feature_table(soil_table_50_fam)
+
+##################################################################################
+
