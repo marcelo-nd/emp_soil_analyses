@@ -20,6 +20,8 @@ setwd("C:/Users/Marcelo/OneDrive - UT Cloud/Postdoc Tü/Sci/EMP_soil_strain_anal
 source("C:/Users/Marcelo/Documents/Github/microbiome-help/table_importers.R")
 source("C:/Users/Marcelo/Documents/Github/microbiome-help/graphs.R")
 
+source("C:/Users/Marcelo/Documents/Github/microbiome-help/diversity_data_helper_functions.R")
+
 ##################################################################################
 # Processing data files from the EMP
 
@@ -127,6 +129,9 @@ soil_table_ordered_50 <- soil_table[1:50,]
 
 # Remove columns (samples) with zero count
 soil_table_ordered_50 <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
+
+# Remove species with less than 10 reads in 10% of samples
+soil_table_ordered_50 <- filter_otus_by_counts_col_percent(soil_table_ordered_50, min_count = 10, percentage = 0.1)
 
 # Export the table
 write.table(soil_table_ordered_50, "soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
@@ -239,3 +244,25 @@ barplot_from_feature_table(soil_table_50_fam)
 
 ##################################################################################
 
+otu_table_t <- t(soil_table_ordered_50)
+
+otuXotu <- cor(otu_table_t, method = "pearson")
+
+heatmap(otuXotu, scale = "none")
+corrplot::corrplot(otuXotu, order = 'hclust')
+corrplot::corrplot.mixed(otuXotu)
+
+testRes = corrplot::cor.mtest(t(otu_table_f), conf.level = 0.95)
+
+corrplot::corrplot(otuXotu, p.mat = testRes$p, method = 'color', diag = FALSE, type = 'upper',
+         sig.level = c(0.001, 0.01, 0.05), pch.cex = 0.5, 
+         insig = 'label_sig', pch.col = 'grey20', order = 'AOE')
+
+write.table(otu_table_f, "soil_asv_table2.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
+
+##################################################################################
+# Diversity Indices
+
+vegan::diversity(t(soil_table_ordered_50))
+
+vegan::estimateR(t(soil_table_ordered_50))
