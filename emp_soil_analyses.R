@@ -67,26 +67,26 @@ write.csv(sample_metadata, "sample_metadata.csv", row.names = FALSE, quote = FAL
 # Filter only Soil samples (empo_4 == "Soil (non-saline)") and biomes with anthropogenic influence (env_biome).
 anthropogenic_biomes <- c("rangeland biome", "anthropogenic terrestrial biome", "urban biome", "cropland biome")
 
-soil_metadata <- sample_metadata %>%
+anthro_soil_metadata <- sample_metadata %>%
   filter(empo_4 == "Soil (non-saline)") %>%
   filter(env_biome %in% anthropogenic_biomes)
 
-head(soil_metadata)
+head(anthro_soil_metadata)
 
 # Number of unique variables (columns)
-length(unique(soil_metadata))
+length(unique(anthro_soil_metadata))
 
 # Number of unique samples (rows)
-length(unique(soil_metadata$sample_name))
+length(unique(anthro_soil_metadata$sample_name))
 
-write.csv(soil_metadata, "soil_anthro_metadata.csv", row.names = FALSE, quote = FALSE)
+write.csv(anthro_soil_metadata, "anthro_soil_metadata.csv", row.names = FALSE, quote = FALSE)
 
 # Get the names only of the samples that we choose
-soil_sample_names <- soil_metadata$sample_name
+anthro_soil_sample_names <- anthro_soil_metadata$sample_name
 
 #soil_sample_names <- make.names(soil_sample_names)
 
-soil_sample_names
+anthro_soil_sample_names
 
 ##### Read OTU tables
 
@@ -120,24 +120,26 @@ asv_table <- extract_table(biom_object = biom_merged, tax_rank = "Genus", col_na
 asv_table <- clean_table(feature_table = asv_table, order_table = TRUE)
 
 # Select data only from soil samples.
-soil_table <- asv_table %>% select(any_of(soil_sample_names))
+anthro_soil_table <- asv_table %>% select(any_of(anthro_soil_sample_names))
 
-head(soil_table)
+head(anthro_soil_table)
 
 # Select only the n more abundant ASVs.
-soil_table_ordered_50 <- soil_table[1:50,]
+anthro_soil_table_ordered <- anthro_soil_table[order(rowSums(anthro_soil_table), decreasing = TRUE),]
+
+anthro_soil_table_ordered_50 <- anthro_soil_table[1:50,]
 
 # Remove columns (samples) with zero count
-soil_table_ordered_50 <- soil_table_ordered_50[, colSums(soil_table_ordered_50 != 0) > 0]
+anthro_soil_table_ordered_50 <- anthro_soil_table_ordered_50[, colSums(anthro_soil_table_ordered_50 != 0) > 0]
 
 # Remove species with less than 10 reads in 10% of samples
-soil_table_ordered_50 <- filter_otus_by_counts_col_percent(soil_table_ordered_50, min_count = 10, percentage = 0.1)
+anthro_soil_table_ordered_50_1 <- filter_otus_by_counts_col_percent(anthro_soil_table_ordered_50, min_count = 10, percentage = 0.1)
 
 # Export the table
-write.table(soil_table_ordered_50, "soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
+write.table(anthro_soil_table_ordered_50, "anthro_soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
 
 # Do barplot.
-barplot_from_feature_table(soil_table_ordered_50)
+barplot_from_feature_table(anthro_soil_table_ordered_50)
 
 ##################################################################################
 #Heatmaps
