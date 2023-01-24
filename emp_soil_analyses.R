@@ -124,19 +124,22 @@ anthro_soil_table <- asv_table %>% select(any_of(anthro_soil_sample_names))
 
 head(anthro_soil_table)
 
-# Select only the n more abundant ASVs.
+# Order table
 anthro_soil_table_ordered <- anthro_soil_table[order(rowSums(anthro_soil_table), decreasing = TRUE),]
 
-anthro_soil_table_ordered_50 <- anthro_soil_table[1:50,]
+# Select only the n more abundant ASVs.
+anthro_soil_table_ordered_50 <- anthro_soil_table_ordered[1:50,]
+
+# Remove species with less than 10 reads in 10% of samples
+anthro_soil_table_ordered_50 <- filter_otus_by_counts_col_percent(anthro_soil_table_ordered_50, min_count = 30, percentage = 0.1)
 
 # Remove columns (samples) with zero count
 anthro_soil_table_ordered_50 <- anthro_soil_table_ordered_50[, colSums(anthro_soil_table_ordered_50 != 0) > 0]
 
-# Remove species with less than 10 reads in 10% of samples
-anthro_soil_table_ordered_50_1 <- filter_otus_by_counts_col_percent(anthro_soil_table_ordered_50, min_count = 10, percentage = 0.1)
+# Export the tables
+write.table(anthro_soil_table_ordered, "anthro_soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
 
-# Export the table
-write.table(anthro_soil_table_ordered_50, "anthro_soil_asv_table.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
+write.table(anthro_soil_table_ordered_50, "anthro_soil_asv_table_50.csv", row.names = TRUE, quote = FALSE, col.names = FALSE, sep = ",")
 
 # Do barplot.
 barplot_from_feature_table(anthro_soil_table_ordered_50)
@@ -265,6 +268,46 @@ write.table(otu_table_f, "soil_asv_table2.csv", row.names = TRUE, quote = FALSE,
 ##################################################################################
 # Diversity Indices
 
-vegan::diversity(t(soil_table_ordered_50))
+# Non-Anthropogenic biomes
+# Remove anthropogenic biomes samples
 
-vegan::estimateR(t(soil_table_ordered_50))
+soil_non_anthro_metadata <- sample_metadata %>%
+  filter(empo_4 == "Soil (non-saline)") %>%
+  filter(!env_biome %in% anthropogenic_biomes)
+
+no_anthro_table <- dplyr::select(asv_table, -any_of(anthro_soil_sample_names))
+
+mean(colSums(no_anthro_table))
+
+# Remove species with less than 1% of mean sample reads in 10% of samples
+no_anthro_table <- filter_otus_by_counts_col_percent(no_anthro_table, min_count = 10, percentage = 0.1)
+
+# Remove columns (samples) with zero count
+no_anthro_table <- no_anthro_table[, colSums(no_anthro_table != 0) > 0]
+
+
+### Anthropogenic biomes
+
+mean(colSums(anthro_soil_table))
+
+# Remove species with less than 1% of mean sample reads in 10% of samples
+anthro_soil_table2 <- filter_otus_by_counts_col_percent(anthro_soil_table, min_count = 5, percentage = 0.1)
+
+# Remove columns (samples) with zero count
+anthro_soil_table2 <- anthro_soil_table2[, colSums(anthro_soil_table2 != 0) > 0]
+
+
+# Calculate diversity indices
+# Shannon
+mean(vegan::diversity(t(no_anthro_table)), index = "shannon")
+
+mean(vegan::diversity(t(anthro_soil_table2)), index = "shannon")
+
+# Simpson
+mean(vegan::diversity(t(no_anthro_table)), index = "simpson")
+
+mean(vegan::diversity(t(anthro_soil_table2)), index = "simpson")
+
+vegan::estimateR(t(anthro_soil_table))
+
+head(vegan::estimateR(t(no_anthro_table)))
