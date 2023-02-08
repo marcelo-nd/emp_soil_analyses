@@ -268,22 +268,33 @@ write.table(otu_table_f, "soil_asv_table2.csv", row.names = TRUE, quote = FALSE,
 ##################################################################################
 # Diversity Indices
 
-# Non-Anthropogenic biomes
-# Remove anthropogenic biomes samples
+# Select the anthropogenic biomes samples
+unique(soil_non_anthro_metadata$env_biome)
 
+remove_anthro_environments <- c( "temperate desert biome", "tundra biome", "tropical desert biome", "desert biome", "subpolar coniferous forest biome")
+
+# Non-Anthropogenic biomes
 soil_non_anthro_metadata <- sample_metadata %>%
   filter(empo_4 == "Soil (non-saline)") %>%
-  filter(!env_biome %in% anthropogenic_biomes)
+  filter(!env_biome %in% anthropogenic_biomes) %>%
+  filter(!env_biome %in% remove_anthro_environments)
 
-no_anthro_table <- dplyr::select(asv_table, -any_of(anthro_soil_sample_names))
+unique(soil_non_anthro_metadata$env_biome)
+
+# Get final names of samples that are non anthropogenic.
+non_anthro_soil_sample_names <- soil_non_anthro_metadata$sample_name
+
+non_anthro_soil_sample_names
+
+no_anthro_table <- dplyr::select(asv_table, any_of(non_anthro_soil_sample_names))
 
 mean(colSums(no_anthro_table))
 
 # Remove species with less than 1% of mean sample reads in 10% of samples
-no_anthro_table <- filter_otus_by_counts_col_percent(no_anthro_table, min_count = 10, percentage = 0.1)
+#no_anthro_table <- filter_otus_by_counts_col_percent(no_anthro_table, min_count = 10, percentage = 0.1)
 
 # Remove columns (samples) with zero count
-no_anthro_table <- no_anthro_table[, colSums(no_anthro_table != 0) > 0]
+#no_anthro_table <- no_anthro_table[, colSums(no_anthro_table != 0) > 0]
 
 
 ### Anthropogenic biomes
@@ -291,23 +302,29 @@ no_anthro_table <- no_anthro_table[, colSums(no_anthro_table != 0) > 0]
 mean(colSums(anthro_soil_table))
 
 # Remove species with less than 1% of mean sample reads in 10% of samples
-anthro_soil_table2 <- filter_otus_by_counts_col_percent(anthro_soil_table, min_count = 5, percentage = 0.1)
+#anthro_soil_table2 <- filter_otus_by_counts_col_percent(anthro_soil_table, min_count = 5, percentage = 0.1)
 
 # Remove columns (samples) with zero count
-anthro_soil_table2 <- anthro_soil_table2[, colSums(anthro_soil_table2 != 0) > 0]
+#anthro_soil_table2 <- anthro_soil_table2[, colSums(anthro_soil_table2 != 0) > 0]
 
 
 # Calculate diversity indices
 # Shannon
 mean(vegan::diversity(t(no_anthro_table)), index = "shannon")
 
-mean(vegan::diversity(t(anthro_soil_table2)), index = "shannon")
+mean(vegan::diversity(t(anthro_soil_table)), index = "shannon")
 
 # Simpson
 mean(vegan::diversity(t(no_anthro_table)), index = "simpson")
 
-mean(vegan::diversity(t(anthro_soil_table2)), index = "simpson")
+mean(vegan::diversity(t(anthro_soil_table)), index = "simpson")
 
-vegan::estimateR(t(anthro_soil_table))
+# Chao
+mean(t(vegan::estimateR(t(no_anthro_table)))[,2])
 
-head(vegan::estimateR(t(no_anthro_table)))
+mean(t(vegan::estimateR(t(anthro_soil_table)))[,2])
+
+# Richness 
+mean(t(vegan::estimateR(t(no_anthro_table)))[,1])
+
+mean(t(vegan::estimateR(t(anthro_soil_table)))[,1])
